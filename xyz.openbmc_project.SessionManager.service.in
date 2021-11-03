@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenBMC Session Manager service.
+
+Before=dropbear.socket
+Before=bmcweb.service
+
+[Service]
+ExecStart=@MESON_INSTALL_PREFIX@/bin/session-manager
+Type=simple
+Restart=always
+
+[Install]
+WantedBy=dropbear.socket
+WantedBy=bmcweb.service
