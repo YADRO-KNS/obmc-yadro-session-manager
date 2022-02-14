@@ -1,7 +1,7 @@
 [Unit]
 Description=OpenBMC Session Manager service.
 
-Before=dropbear.socket
+Before=dropbear@.service
 Before=bmcweb.service
 
 [Service]
@@ -10,5 +10,5 @@ Type=simple
 Restart=always
 
 [Install]
-WantedBy=dropbear.socket
+WantedBy=dropbear@.service
 WantedBy=bmcweb.service
