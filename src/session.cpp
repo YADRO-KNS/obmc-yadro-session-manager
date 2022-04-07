@@ -28,28 +28,12 @@ void SessionItem::setSessionMetadata(std::string username,
 
 void SessionItem::adjustSessionOwner(const std::string& userName)
 {
-    using DBusGetObjectOut = std::map<std::string, std::vector<std::string>>;
-    using namespace dbus;
-
-    constexpr const std::array userObjectIfaces = {
-        "xyz.openbmc_project.User.Attributes"};
-    auto userObjectPath = "/xyz/openbmc_project/user/" + userName;
-
-    DBusGetObjectOut getUserObject;
-    auto callMethod =
-        bus.new_method_call(object_mapper::service, object_mapper::object,
-                            object_mapper::interface, object_mapper::getObject);
-    callMethod.append(userObjectPath.c_str(), userObjectIfaces);
-    bus.call(callMethod).read(getUserObject);
-
-    if (getUserObject.empty())
+    // skip publish session for the `root`
+    if (userName == "root")
     {
         throw UnknownUser();
     }
-
-    this->associations({
-        make_tuple("user", "session", userObjectPath),
-    });
+    this->username(userName);
 }
 
 const std::string SessionItem::getProcPath() const
@@ -58,19 +42,7 @@ const std::string SessionItem::getProcPath() const
 }
 const std::string SessionItem::getOwner() const
 {
-    for (const auto assocTuple : associations())
-    {
-        const std::string assocType = std::get<0>(assocTuple);
-        if (assocType != std::string("user"))
-        {
-            continue;
-        }
-        const std::string userObjectPath = std::get<2>(assocTuple);
-
-        return retrieveUserFromObjectPath(userObjectPath);
-    }
-
-    throw std::logic_error("The username has not been set.");
+    return this->username();
 }
 
 const std::string
