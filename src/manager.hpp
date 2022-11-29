@@ -105,6 +105,22 @@ class SessionManager final :
      *         identifier
      */
     const std::string getSessionObjectPath(SessionIdentifier) const;
+     /**
+     * @brief closeSessionById check if all sessions are allowed by specified ID.
+     *
+     * @param callerSessionId     - unique caller session ID
+     * @param removedSessionId    - unique session ID to remove from storage
+     */
+    void closeSessionById(std::string callerSessionId, std::string removedSessionId) override;
+    /**
+     * @brief closeUserSessionsByType check if all sessions are allowed by specified ID.
+     *
+     * 
+     * @param type       - the type of session to close.
+     * @param sessionId  - unique caller session ID, required to check the system rights to delete another session
+     * @param ownedOnly  - true/false if admin wants to delete own sessions only
+     */
+    uint32_t closeUserSessionsByType(SessionType type, std::string sessionId, bool ownedOnly);
   protected:
     friend class SessionItem;
 
@@ -183,6 +199,33 @@ class SessionManager final :
      *        and cleanup sessions of an unavailable service.
      */
     void checkSessionOwnerAlive(const boost::system::error_code&);
+    
+    /**
+     * @brief isAllSessionsAllowed check if all sessions are allowed by specified ID.
+     *
+     * @param sessionId     - unique session ID to remove from storage
+     * 
+     * @return bool true/false - is closing all sessions allowed
+     */
+    bool isAllSessionsAllowed(std::string sessionId);
+     /**
+     * @brief isOwnSession check if the user is the owner of the given sessopn.
+     *
+     * @param callerSessionId     - unique session ID which request to terminate some other session
+     * 
+     * @param removedSessionId    - unique session ID to remove from storage
+     * 
+     * @return bool true/false - the user is the owner of the session or not
+     */
+    bool isOwnSession(std::string callerSessionId, std::string removedSessionId);
+     /**
+     * @brief getSessionItem returning one session item by session ID provided
+     *
+     * @param sessionId     - unique session ID to get the item for
+     * 
+     * @return SessionItemPtr - foundSessionIt->second, session item associated with session ID
+     */
+    SessionItemPtr getSessionItem(std::string sessionId);
   private:
     sdbusplus::bus::bus& bus;
     boost::asio::io_context& ioc;
