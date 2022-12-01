@@ -93,6 +93,117 @@ uint32_t SessionManager::closeAllByType(SessionType type)
     return count;
 }
 
+uint32_t SessionManager::closeUserSessionsByType(SessionType type,
+                                                 std::string sessionId,
+                                                 bool ownedOnly)
+{
+    const auto numSessId = parseSessionId(sessionId);
+    const std::string userName = getSessionItem(sessionId)->getOwner();
+    bool allowed = isAllSessionsAllowed(sessionId);
+    const auto count =
+        std::erase_if(sessionItems, [allowed, ownedOnly, type, userName,
+                                     numSessId](const auto& item) {
+            const auto& [id, session] = item;
+            if ((allowed) && !(ownedOnly))
+            {
+                return session->sessionType() == type && id != numSessId;
+            }
+            else
+            {
+                return session->sessionType() == type &&
+                       session->getOwner() == userName && id != numSessId;
+            }
+        });
+    return count;
+}
+
+bool SessionManager::isAllSessionsAllowed(std::string sessionId)
+{
+    log<level::DEBUG>("SessionManager::isAllSessionsAllowed()",
+                      entry("CALLER-SESSION-ID=%s", sessionId.c_str()));
+
+    std::map<std::string,
+             std::variant<std::string, std::vector<std::string>, bool>>
+        mapperResponse;
+    auto mapper = bus.new_method_call(
+        "xyz.openbmc_project.User.Manager", "/xyz/openbmc_project/user",
+        "xyz.openbmc_project.User.Manager", "GetUserInfo");
+
+    std::string userName = getSessionItem(sessionId)->getOwner();
+    mapper.append(userName.c_str());
+
+    try {
+        bus.call(mapper).read(mapperResponse);
+        if (mapperResponse.empty())
+        {
+            log<level::ERR>("No Object has implemented the interface",
+                        entry("SERVICE=%s", "xyz.openbmc_project.User.Manager"),
+                        entry("USERNAME=%s", userName.c_str()));
+            throw InternalFailure();
+        }
+
+        auto mapperResponseIt = mapperResponse.find("UserPrivilege");
+        if (mapperResponseIt == mapperResponse.end())
+        {
+            throw InternalFailure();
+        }
+        const auto& privilegeValue = std::get<0>(mapperResponseIt->second);
+        return (privilegeValue == "priv-admin");
+    } catch(const sdbusplus::exception_t& ex) {
+        log<level::ERR>("Error getting user info",
+                        entry("SERVICE=%s", "xyz.openbmc_project.User.Manager"),
+                        entry("USERNAME=%s", userName.c_str()));
+        throw InternalFailure();
+    }
+    return false;  
+}
+
+// required to follow DRY principle, since logic would be used several times
+SessionItemPtr SessionManager::getSessionItem(std::string sessionId)
+{
+    log<level::DEBUG>("SessionManager::getSessionItem()",
+                      entry("CALLER-SESSION-ID=%s", sessionId.c_str()));
+
+    auto numSessId = parseSessionId(sessionId);
+    auto foundSessionIt = sessionItems.find(numSessId);
+    if (foundSessionIt == sessionItems.end())
+    {
+        throw InvalidArgument();
+    }
+    return foundSessionIt->second;
+}
+
+bool SessionManager::isOwnSession(std::string callerSessionId,
+                                  std::string removedSessionId)
+{
+    log<level::DEBUG>("SessionManager::isOwnSession()",
+                      entry("CALLER-SESSION-ID=%s", callerSessionId.c_str()),
+                      entry("REMOVED-SESSION-ID=%s", removedSessionId.c_str()));
+
+    const std::string callerUserName = getSessionItem(callerSessionId)->getOwner();
+    const std::string removedUserName = getSessionItem(removedSessionId)->getOwner();
+
+    return (callerUserName == removedUserName);
+}
+
+void SessionManager::closeSessionById(std::string callerSessionId,
+                                      std::string removedSessionId)
+{
+    log<level::DEBUG>("SessionManager::closeSessionById()",
+                      entry("CALLER-SESSION-ID=%s", callerSessionId.c_str()),
+                      entry("REMOVED-SESSION-ID=%s", removedSessionId.c_str()));
+    if ((callerSessionId == removedSessionId) ||
+        (isOwnSession(callerSessionId, removedSessionId)) ||
+        (isAllSessionsAllowed(callerSessionId)))
+    {
+        close(removedSessionId);
+    }
+    else
+    {
+        throw NotAllowed();
+    }
+}
+
 void SessionManager::close(std::string sessionId)
 {
     log<level::DEBUG>("SessionManager::close()",
